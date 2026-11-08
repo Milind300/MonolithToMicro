@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/Microservices/">
+    <Project Path="src/MonolithToMicro.Catalog.Api/MonolithToMicro.Catalog.Api.csproj" />
+    <Project Path="src/MonolithToMicro.Product.Api/MonolithToMicro.Product.Api.csproj" />
+    <Project Path="src/MonolithToMicro.Order.Api/MonolithToMicro.Order.Api.csproj" />
+    <Project Path="src/MonolithToMicro.User.Api/MonolithToMicro.User.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MonolithToMicro.Order.Tests/MonolithToMicro.Order.Tests.csproj" />
+  </Folder>
+</Solution>

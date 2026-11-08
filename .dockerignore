@@ -1,0 +1,23 @@
+
+# Build artifacts
+**/bin/
+**/obj/
+**/.vs/
+**/TestResults/
+
+# Frontend dependencies
+**/node_modules/
+
+# Development-specific configuration
+**/appsettings.Development.json
+**/appsettings.Local.json
+
+# Local secrets and environment files
+.env
+.env.*
+!.env.docker.example
+**/secrets.json
+
+# Git and documentation
+.git/
+docs/

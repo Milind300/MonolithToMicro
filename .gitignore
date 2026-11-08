@@ -1,0 +1,25 @@
+**/bin/
+**/obj/
+.vs/
+.vscode/
+**/appsettings.Development.json
+**/.env
+*.user
+*.db
+# Frontend dependencies and build output
+**/node_modules/
+**/dist/
+
+# Local environment files
+**/.env.*
+!**/.env.example
+**/catalog.env
+# Personal learning documentation
+/docs/
+MonolithToMicroUI/
+
+# Additional local configuration
+**/appsettings.Local.json
+
+# Allow a safe example of Docker environment variables
+!/.env.docker.example

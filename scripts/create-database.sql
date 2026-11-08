@@ -1,0 +1,9 @@
+IF DB_ID(N'ECommerceDb') IS NULL CREATE DATABASE [ECommerceDb];
+GO
+USE [ECommerceDb];
+GO
+IF SCHEMA_ID(N'catalog') IS NULL EXEC(N'CREATE SCHEMA catalog');
+IF SCHEMA_ID(N'product') IS NULL EXEC(N'CREATE SCHEMA product');
+IF SCHEMA_ID(N'orders') IS NULL EXEC(N'CREATE SCHEMA orders');
+IF SCHEMA_ID(N'users') IS NULL EXEC(N'CREATE SCHEMA users');
+GO

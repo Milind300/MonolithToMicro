@@ -23,3 +23,5 @@ MonolithToMicroUI/
 
 # Allow a safe example of Docker environment variables
 !/.env.docker.example
+# Generated deployment artifacts
+/publish/

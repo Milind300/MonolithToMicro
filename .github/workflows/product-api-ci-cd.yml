@@ -2,6 +2,15 @@
 name: Product API - CI/CD
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/MonolithToMicro.Product.Api/**'
+      - 'tests/MonolithToMicro.Product.Tests/**'
+      - '.github/workflows/product-api-ci-cd.yml'
+      - 'Directory.Build.props'
+      - 'MonolithToMicro.slnx'
   workflow_dispatch:
 
 permissions:

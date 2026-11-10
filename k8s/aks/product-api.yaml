@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-api
+  namespace: monolithtomicro
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: product-api}}
+  template:
+    metadata: {labels: {app: product-api, azure.workload.identity/use: "true"}}
+    spec:
+      serviceAccountName: product-api-sa
+      containers:
+        - name: product-api
+          env:
+            - name: ConnectionStrings__ECommerceDb
+              valueFrom:
+                secretKeyRef:
+                  name: product-db-connection
+                  key: ConnectionStrings__ECommerceDb
+          image: acrmonolithtomicro13.azurecr.io/product-api:v1
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 8080}]
+          readinessProbe: {httpGet: {path: /health, port: 8080}, initialDelaySeconds: 5, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /health, port: 8080}, initialDelaySeconds: 15, periodSeconds: 20}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}

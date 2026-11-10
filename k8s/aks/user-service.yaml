@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-api
+  namespace: monolithtomicro
+spec:
+  type: ClusterIP
+  selector: {app: user-api}
+  ports: [{name: http, port: 8080, targetPort: 8080, protocol: TCP}]

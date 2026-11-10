@@ -1,0 +1,73 @@
+
+name: AKS - Build and Push Images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aks-image-publish
+  cancel-in-progress: false
+
+env:
+  ACR_NAME: acrmonolithtomicro13
+  ACR_LOGIN_SERVER: acrmonolithtomicro13.azurecr.io
+
+jobs:
+  build-and-push:
+    name: Build, Test and Push
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Run automated tests
+        run: dotnet test tests/MonolithToMicro.Order.Tests/MonolithToMicro.Order.Tests.csproj --configuration Release
+
+      - name: Authenticate to Azure using OIDC
+        uses: azure/login@v2
+        with:
+          client-id: 70b79560-ab55-4cff-b42a-0ee747e428de
+          tenant-id: 43ed8cd9-5f65-4dbe-b58f-67aa7022542e
+          subscription-id: ea971da6-8972-4e79-953f-3fb6736e17cb
+
+      - name: Authenticate Docker to ACR
+        run: az acr login --name "$ACR_NAME"
+
+      - name: Build and push Catalog API
+        run: |
+          IMAGE="$ACR_LOGIN_SERVER/catalog-api:$GITHUB_SHA"
+          docker build -f src/MonolithToMicro.Catalog.Api/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - name: Build and push Product API
+        run: |
+          IMAGE="$ACR_LOGIN_SERVER/product-api:$GITHUB_SHA"
+          docker build -f src/MonolithToMicro.Product.Api/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - name: Build and push Order API
+        run: |
+          IMAGE="$ACR_LOGIN_SERVER/order-api:$GITHUB_SHA"
+          docker build -f src/MonolithToMicro.Order.Api/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - name: Build and push User API
+        run: |
+          IMAGE="$ACR_LOGIN_SERVER/user-api:$GITHUB_SHA"
+          docker build -f src/MonolithToMicro.User.Api/Dockerfile -t "$IMAGE" src/MonolithToMicro.User.Api
+          docker push "$IMAGE"

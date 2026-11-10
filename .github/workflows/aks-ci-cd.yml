@@ -1,5 +1,5 @@
 
-name: AKS - Build and Push Images
+name: AKS - Build, Push and Deploy
 
 on:
   workflow_dispatch:
@@ -8,12 +8,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: aks-image-publish
+  group: aks-production-deployment
   cancel-in-progress: false
 
 env:
   ACR_NAME: acrmonolithtomicro13
   ACR_LOGIN_SERVER: acrmonolithtomicro13.azurecr.io
+  AKS_RESOURCE_GROUP: rg-monolithtomicro-aks-day13
+  AKS_CLUSTER_NAME: aks-monolithtomicro-day13
+  K8S_NAMESPACE: monolithtomicro
 
 jobs:
   build-and-push:
@@ -36,7 +39,11 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Run automated tests
-        run: dotnet test tests/MonolithToMicro.Order.Tests/MonolithToMicro.Order.Tests.csproj --configuration Release
+        run: |
+          set -euo pipefail
+          dotnet test \
+            tests/MonolithToMicro.Order.Tests/MonolithToMicro.Order.Tests.csproj \
+            --configuration Release
 
       - name: Authenticate to Azure using OIDC
         uses: azure/login@v2
@@ -50,24 +57,161 @@ jobs:
 
       - name: Build and push Catalog API
         run: |
+          set -euo pipefail
+
           IMAGE="$ACR_LOGIN_SERVER/catalog-api:$GITHUB_SHA"
-          docker build -f src/MonolithToMicro.Catalog.Api/Dockerfile -t "$IMAGE" .
+
+          docker build \
+            -f src/MonolithToMicro.Catalog.Api/Dockerfile \
+            -t "$IMAGE" .
+
           docker push "$IMAGE"
 
       - name: Build and push Product API
         run: |
+          set -euo pipefail
+
           IMAGE="$ACR_LOGIN_SERVER/product-api:$GITHUB_SHA"
-          docker build -f src/MonolithToMicro.Product.Api/Dockerfile -t "$IMAGE" .
+
+          docker build \
+            -f src/MonolithToMicro.Product.Api/Dockerfile \
+            -t "$IMAGE" .
+
           docker push "$IMAGE"
 
       - name: Build and push Order API
         run: |
+          set -euo pipefail
+
           IMAGE="$ACR_LOGIN_SERVER/order-api:$GITHUB_SHA"
-          docker build -f src/MonolithToMicro.Order.Api/Dockerfile -t "$IMAGE" .
+
+          docker build \
+            -f src/MonolithToMicro.Order.Api/Dockerfile \
+            -t "$IMAGE" .
+
           docker push "$IMAGE"
 
       - name: Build and push User API
         run: |
+          set -euo pipefail
+
           IMAGE="$ACR_LOGIN_SERVER/user-api:$GITHUB_SHA"
-          docker build -f src/MonolithToMicro.User.Api/Dockerfile -t "$IMAGE" src/MonolithToMicro.User.Api
+
+          docker build \
+            -f src/MonolithToMicro.User.Api/Dockerfile \
+            -t "$IMAGE" src/MonolithToMicro.User.Api
+
           docker push "$IMAGE"
+
+  deploy:
+    name: Deploy and Verify AKS
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to Azure using OIDC
+        uses: azure/login@v2
+        with:
+          client-id: 70b79560-ab55-4cff-b42a-0ee747e428de
+          tenant-id: 43ed8cd9-5f65-4dbe-b58f-67aa7022542e
+          subscription-id: ea971da6-8972-4e79-953f-3fb6736e17cb
+
+      - name: Install kubelogin
+        uses: azure/use-kubelogin@v1.2
+        with:
+          kubelogin-version: 'v0.2.22'
+
+      - name: Configure AKS context
+        uses: azure/aks-set-context@v5
+        with:
+          resource-group: rg-monolithtomicro-aks-day13
+          cluster-name: aks-monolithtomicro-day13
+          admin: 'false'
+          use-kubelogin: 'true'
+
+      - name: Verify Kubernetes authorization
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Checking deployment permissions..."
+
+          kubectl auth can-i patch deployments.apps \
+            --namespace "$K8S_NAMESPACE" | grep -qx yes
+
+          kubectl auth can-i get deployments.apps \
+            --namespace "$K8S_NAMESPACE" | grep -qx yes
+
+          echo "Kubernetes deployment permissions: PASS"
+
+      - name: Verify target deployments exist
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for service in catalog product order user; do
+            deployment="${service}-api"
+
+            kubectl get deployment "$deployment" \
+              --namespace "$K8S_NAMESPACE" \
+              --output name
+
+          done
+
+      - name: Deploy four microservices
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for service in catalog product order user; do
+            deployment="${service}-api"
+            image="${ACR_LOGIN_SERVER}/${deployment}:${GITHUB_SHA}"
+
+            echo "Deploying ${deployment}..."
+
+            kubectl set image \
+              "deployment/${deployment}" \
+              "${deployment}=${image}" \
+              --namespace "$K8S_NAMESPACE"
+
+            kubectl rollout status \
+              "deployment/${deployment}" \
+              --namespace "$K8S_NAMESPACE" \
+              --timeout=180s
+
+            echo "${deployment} rollout: PASS"
+          done
+
+      - name: Verify image versions and deployments
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for service in catalog product order user; do
+            deployment="${service}-api"
+            expected="${ACR_LOGIN_SERVER}/${deployment}:${GITHUB_SHA}"
+
+            actual="$(kubectl get deployment "$deployment" \
+              --namespace "$K8S_NAMESPACE" \
+              -o jsonpath='{.spec.template.spec.containers[0].image}')"
+
+            if [ "$actual" != "$expected" ]; then
+              echo "ERROR: Image mismatch for ${deployment}"
+              echo "Expected: $expected"
+              echo "Actual:   $actual"
+              exit 1
+            fi
+
+            echo "${deployment} image verification: PASS"
+          done
+
+          echo "Final deployment status:"
+
+          kubectl get deployments \
+            --namespace "$K8S_NAMESPACE"

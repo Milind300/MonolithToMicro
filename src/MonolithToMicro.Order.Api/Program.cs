@@ -1,4 +1,4 @@
-
+using Azure.Identity;
 using Azure.Messaging.ServiceBus;
 using Microsoft.EntityFrameworkCore;
 using MonolithToMicro.Order.Api.Data;
@@ -73,27 +73,28 @@ builder.Services.AddScoped<
     IOutboxPreviewService,
     OutboxPreviewService>();
 
-// Intentionally disabled for the local lab.
-// No Azure Service Bus resources are provisioned.
-bool enableServiceBusPublisher = false;
+// Service Bus publishing is opt-in.
+var enableServiceBusPublisher =
+    builder.Configuration.GetValue<bool>("ServiceBus:Enabled");
 
 if (enableServiceBusPublisher)
 {
-    var connectionString =
-        builder.Configuration["ServiceBus:ConnectionString"];
+    var fullyQualifiedNamespace =
+        builder.Configuration["ServiceBus:FullyQualifiedNamespace"];
 
-    if (string.IsNullOrWhiteSpace(connectionString))
+    if (string.IsNullOrWhiteSpace(fullyQualifiedNamespace))
     {
         throw new InvalidOperationException(
-            "ServiceBus:ConnectionString must be configured.");
+            "ServiceBus:FullyQualifiedNamespace must be configured.");
     }
 
     builder.Services.AddSingleton(
-        _ => new ServiceBusClient(connectionString));
+        _ => new ServiceBusClient(
+            fullyQualifiedNamespace,
+            new DefaultAzureCredential()));
 
     builder.Services.AddHostedService<OutboxPublisher>();
 }
-
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())

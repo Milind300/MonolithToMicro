@@ -1,0 +1,72 @@
+
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: order-api
+  namespace: monolithtomicro
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: order-api
+
+  template:
+    metadata:
+      labels:
+        app: order-api
+        azure.workload.identity/use: "true"
+
+    spec:
+      serviceAccountName: order-api-sa
+
+      containers:
+        - name: order-api
+          image: acrmonolithtomicro13.azurecr.io/order-api:e8693a30096fe2efefb3e094492034d9cb2cb8a3
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - containerPort: 8080
+
+          env:
+            - name: ProductApi__BaseUrl
+              value: "http://product-api:8080/"
+
+            - name: ConnectionStrings__ECommerceDb
+              valueFrom:
+                secretKeyRef:
+                  name: order-db-connection
+                  key: ConnectionStrings__ECommerceDb
+
+            - name: ServiceBus__Enabled
+              value: "true"
+
+            - name: ServiceBus__FullyQualifiedNamespace
+              value: "sb-monolithtomicro-day10.servicebus.windows.net"
+
+            - name: ServiceBus__TopicName
+              value: "order-placed"
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

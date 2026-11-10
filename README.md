@@ -1,61 +1,124 @@
 # MonolithToMicro
 
-**Enterprise Application Modernization | .NET 10 | Microservices Architecture | Microsoft Azure | DevOps**
+**Enterprise Application Modernization | .NET 10 | Microsoft Azure | Microservices | Kubernetes | GitHub Actions CI/CD**
 
-MonolithToMicro is an architecture-focused Proof of Concept (PoC) exploring the design and implementation patterns required to modernize a monolithic ASP.NET Core application into independently deployable microservices.
+A hands-on Azure cloud engineering and DevOps portfolio project demonstrating how to design, containerize, secure, and deploy independently deployable ASP.NET Core microservices using Microsoft Azure.
 
-The solution demonstrates service-oriented application design, domain-aligned persistence, distributed transaction patterns, containerization, cloud deployment, identity-based security, and deployment automation using the Microsoft technology stack.
+The project includes four .NET 10 APIs, Azure SQL Database, Azure Container Registry, Azure Kubernetes Service (AKS), Microsoft Entra authentication, GitHub Actions CI/CD, and an event-driven integration using Azure Service Bus and Azure Functions.
 
-The repository provides a working microservices reference implementation. It does not currently include the source code of a legacy monolith or a completed migration from an existing monolithic application.
+> **Project scope:** This is an architecture-focused proof of concept, not a completed migration of an existing legacy monolith. Its goal is to demonstrate modernization techniques through an executable reference implementation and verified cloud deployments.
 
-## 1. Architecture Overview
+## 1. Project Highlights
 
-The solution is organized into four business-oriented APIs:
+| Capability | Implementation | Verification |
+|---|---|---|
+| Microservices | Catalog, Product, Order, User APIs | Deployed to AKS |
+| Containerization | Docker and .NET 10 | Four images built successfully |
+| Container registry | Azure Container Registry | SHA-tagged images published |
+| Orchestration | Azure Kubernetes Service | Four healthy Deployments |
+| CI/CD | GitHub Actions | Build, test, push, deploy successful |
+| Cloud authentication | Microsoft Entra ID and GitHub OIDC | Verified |
+| Kubernetes authorization | Namespace-scoped RBAC | Verified |
+| Database | Azure SQL Database | Product and Order queries verified |
+| Transactional outbox | EF Core and Azure SQL | Event persisted and published |
+| Messaging | Azure Service Bus queue | Publishing from AKS verified |
+| Serverless consumer | Azure Functions | Deployed; successful consumption not independently verified |
+| Operational controls | AKS start/stop and health checks | Verified |
+
+## 2. Architecture Overview
+
+The solution is divided into four business-capability-oriented services.
 
 | Service | Responsibility |
 |---|---|
 | Catalog API | Catalog item management |
 | Product API | Product inventory and availability |
-| Order API | Customer order processing and integration workflows |
+| Order API | Customer orders, transactional outbox, and event publication |
 | User API | Customer profile management |
 
-Each service implements a layered structure:
+The architecture separates application responsibilities, data access, and infrastructure concerns.
+
+Typical service structure:
 
 `Controller → Application Service → Repository → EF Core DbContext → SQL Server`
 
-Services maintain their own persistence models and Entity Framework Core migrations.
+The system demonstrates logical data ownership, independently deployable services, internal Kubernetes networking, and identity-based access to Azure resources.
+
+### Azure Deployment Architecture
+
+```mermaid
+flowchart TD
+    DEV["Developer / GitHub main branch"]
+    CI["GitHub Actions CI/CD"]
+    ACR["Azure Container Registry"]
+    OIDC["Microsoft Entra ID / GitHub OIDC"]
+
+    subgraph AKS["Azure Kubernetes Service"]
+        CAT["Catalog API"]
+        PROD["Product API"]
+        ORD["Order API"]
+        USR["User API"]
+    end
+
+    SQL["Azure SQL Database"]
+    SB["Azure Service Bus - order-placed queue"]
+    FUNC["Azure Function - ProcessOrderFromQueue"]
+
+    DEV --> CI
+    CI --> OIDC
+    CI --> ACR
+    CI --> AKS
+
+    ACR --> AKS
+    ORD --> PROD
+    PROD --> SQL
+    ORD --> SQL
+    ORD --> SB
+    SB -.-> FUNC
+```
+
+The solid connections represent implemented architecture and verified interactions where described below. The dotted Azure Function connection represents a deployed consumer integration whose successful processing of the latest test message has not been independently confirmed.
 
 ### Architectural Principles
 
-- Business-capability-based service boundaries
-- Independent service build and deployment
+- Business-capability-oriented service boundaries
+- Independent API build and deployment
+- Layered application design and dependency injection
+- Asynchronous database operations
 - Explicit API contracts
-- Service ownership of persistence models
-- Dependency injection and separation of concerns
-- Asynchronous data access
-- Transactional consistency within service boundaries
-- Secure cloud authentication without embedded credentials
-- Automated, repeatable deployment processes
+- Logical persistence isolation through schemas
+- Transactional outbox for reliable publication
+- Managed identity and least-privilege authorization
+- Automated container delivery using GitHub Actions
+- Health checks and Kubernetes rollout verification
+- Cost-conscious infrastructure operation
 
-## 2. Technology Stack
+## 3. Technology Stack
 
 | Area | Technology |
 |---|---|
-| Application framework | ASP.NET Core 10 |
+| Framework | ASP.NET Core 10 |
 | Language | C# |
-| Persistence | Entity Framework Core 10 |
-| Database | Microsoft SQL Server / Azure SQL Database |
-| Containerization | Docker and Docker Compose |
-| Cloud hosting | Azure App Service |
+| ORM | Entity Framework Core 10 |
+| Database | SQL Server / Azure SQL Database |
+| Containers | Docker |
+| Local orchestration | Docker Compose |
+| Cloud orchestration | Azure Kubernetes Service |
+| Image registry | Azure Container Registry |
+| CI/CD | GitHub Actions |
+| Cloud identity | Microsoft Entra ID, managed identities, OIDC |
+| Kubernetes authentication | kubelogin |
+| Kubernetes authorization | Native Kubernetes RBAC |
+| Messaging | Azure Service Bus |
+| Background processing | .NET hosted service |
+| Serverless processing | Azure Functions |
+| App hosting | Azure App Service |
 | Object storage | Azure Blob Storage |
-| Cloud identity | Microsoft Entra managed identities |
 | Source control | Git and GitHub |
-| CI/CD | GitHub Actions — integration in progress |
-| API documentation | Swagger / OpenAPI in development |
 
-## 3. Data Architecture
+## 4. Data Architecture
 
-The local implementation uses a shared SQL Server database, `ECommerceDb`, with service-specific schemas:
+The solution uses the `ECommerceDb` model with service-specific database schemas.
 
 | Service | Schema |
 |---|---|
@@ -64,146 +127,464 @@ The local implementation uses a shared SQL Server database, `ECommerceDb`, with 
 | Order | `orders` |
 | User | `users` |
 
-Each service maintains its own `DbContext` and migration history.
+Each service owns its data-access model and EF Core migrations.
 
-This approach provides **logical data ownership**, not full physical database isolation. Separate databases per service remain an architectural option when operational, scaling, or organizational requirements justify that change.
+This provides **logical database isolation**, not fully independent databases per microservice.
 
-The design avoids introducing direct cross-service database dependencies as an integration mechanism.
+The deployed Product and Order APIs have been validated against Azure SQL Database using Microsoft Entra-based authentication.
 
-## 4. Distributed Transaction Pattern
+### Verified Azure SQL Integration
 
-The Order API demonstrates the transactional outbox pattern.
+**Product API**
 
-When an order is created, the order entity and a corresponding `OrderPlaced.v1` outbox message are persisted as part of the same database transaction.
+`GET /api/product`
 
-This establishes the persistence foundation for reliable event publication.
+Result: HTTP 200, returning the `AKS-DEMO-001` product stored in Azure SQL.
 
-An automated outbox dispatcher, message broker integration, consumer processing, and end-to-end delivery guarantees are not yet implemented.
+**Order API**
 
-## 5. Containerization
+`GET /api/order`
 
-The APIs include Dockerfiles for containerized deployment.
+Result: HTTP 200, returning stored customer orders.
 
-Docker Compose is configured for the Product and Order services, supporting local development and integration scenarios.
+These tests establish successful database-backed execution from the AKS environment.
 
-Container-to-database connectivity is configured through local environment settings. Credentials are excluded from source control.
+The Azure SQL deployment uses serverless capabilities and an automatic pause configuration. An initial request previously timed out, while a later request succeeded after the database was confirmed online. The precise cause of the initial timeout was not conclusively established.
 
-## 6. Microsoft Azure Deployment
+## 5. Transactional Outbox and Service Bus
 
-The Product API has been deployed and validated using Microsoft Azure.
+The Order API implements a transactional outbox pattern.
 
-### Implemented Cloud Components
+When a customer order is created, the application persists the order and an associated `OrderPlaced.v1` event in Azure SQL as part of the same transactional operation.
 
-| Component | Implementation |
+A background `OutboxPublisher` service polls for unpublished events.
+
+When enabled, the publisher uses `DefaultAzureCredential` and Azure Service Bus to publish messages without embedding a Service Bus connection string in application code.
+
+### Event Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Order as Order API
+    participant SQL as Azure SQL
+    participant Publisher as Outbox Publisher
+    participant Bus as Azure Service Bus
+    participant Function as Azure Function
+
+    Client->>Order: POST /api/order
+    Order->>SQL: Insert order + outbox event
+    SQL-->>Order: Commit
+    Order-->>Client: HTTP 201 Created
+
+    loop Background polling
+        Publisher->>SQL: Query unpublished events
+        SQL-->>Publisher: Outbox event
+        Publisher->>Bus: Publish OrderPlaced.v1
+        Bus-->>Publisher: Send acknowledged
+        Publisher->>SQL: Set PublishedAtUtc
+    end
+
+    Bus-->>Function: Configured Service Bus trigger
+    Note over Function: Successful processing of the test event not independently verified
+```
+
+### Verified AKS Publishing Test
+
+A new customer order was created through the AKS-hosted Order API.
+
+| Field | Verified value |
 |---|---|
-| Azure App Service | Windows Free F1 hosting for Product API |
-| Azure SQL Database | Serverless database within configured free usage limits |
-| Microsoft Entra identity | System-assigned managed identity for Product API |
-| Database authorization | Schema-scoped SQL permissions |
-| Azure Blob Storage | Private container with verified upload/download |
-| Database schema management | EF Core migrations applied to Azure SQL |
-| Network controls | SQL firewall restricted to configured application outbound IPs |
+| Order ID | `b6704cfe-3391-4b60-998a-5f2d6d02c86a` |
+| Outbox message ID | `3e844ae6-52f1-47a0-943b-cece8a24289e` |
+| Event type | `OrderPlaced.v1` |
+| Order status | Pending |
+| Event created (UTC) | `2026-11-10 21:50:52` |
+| Event marked published (UTC) | `2026-11-10 21:51:03` |
 
-### Deployment Validation
+The Order API logs reported:
 
-The deployed Product API has been verified through the following endpoints:
+```text
+Published outbox message 3e844ae6-52f1-47a0-943b-cece8a24289e of type OrderPlaced.v1.
+```
 
-| Endpoint | Verified result |
+The Azure SQL `orders.OutboxMessages` table also showed a non-null `PublishedAtUtc` for the same event.
+
+**Verified conclusion:** The Order API running on AKS successfully published its transactional outbox event to Azure Service Bus.
+
+### Azure Function Consumer
+
+An Azure Function named `ProcessOrderFromQueue` has been deployed with a Service Bus trigger for the `order-placed` queue.
+
+During earlier integration testing, a message was moved to the dead-letter queue because its payload properties did not match the consumer's initial parsing expectations. The consumer code was subsequently corrected and republished.
+
+In the later AKS publishing test, the queue reported:
+
+- Active messages: `0`
+- Dead-letter messages: `1`
+- No increase in dead-letter count from the previous baseline
+
+The Function's invocation history was unavailable because Application Insights was not configured.
+
+**Verification boundary:** These observations are consistent with successful consumption but do not conclusively prove successful processing by the Azure Function for the test event.
+
+The existing dead-letter message has been retained as troubleshooting evidence.
+
+## 6. Azure Infrastructure
+
+The project uses several Azure components, organized around application hosting, persistence, identity, and delivery.
+
+| Azure resource | Purpose |
 |---|---|
-| `/health` | HTTP 200 — `Healthy` |
-| `/api/product` | HTTP 200 — `[]` |
+| Azure App Service | Product API hosting |
+| Azure SQL Database | Persistent Product and Order data |
+| Azure Blob Storage | Private object storage |
+| Azure Container Registry | Docker image storage |
+| Azure Kubernetes Service | Four microservice deployments |
+| Microsoft Entra ID | Cloud authentication and authorization |
+| User-assigned managed identities | Workload identity and deployment access |
+| Azure Service Bus | Order event messaging |
+| Azure Functions | Service Bus event consumer |
 
-The Product API accesses Azure SQL using passwordless managed identity authentication.
+### AKS Configuration
 
-The current `/health` endpoint is an application liveness check; the successful `/api/product` request also validates the database-backed execution path.
+| Setting | Value |
+|---|---|
+| Cluster | `aks-monolithtomicro-day13` |
+| Region | Central India |
+| Resource group | `rg-monolithtomicro-aks-day13` |
+| Kubernetes namespace | `monolithtomicro` |
+| Kubernetes version verified | `1.36.5` |
+| Authentication | Managed Microsoft Entra integration |
+| Authorization | Native Kubernetes RBAC |
+| API exposure | Internal ClusterIP Services |
 
-Only the Product API has been verified on Azure. The other services remain part of the local implementation.
+The four services run as Kubernetes Deployments with one desired replica each.
 
-## 7. CI/CD Strategy
+At the last runtime verification, all four Deployments reported `1/1` Ready, all four pods were Running, and the pods showed zero restarts.
 
-GitHub Actions is the selected CI/CD platform.
+**Operational state:** The AKS cluster was successfully stopped after validation to avoid unnecessary worker-compute charges. The workloads are therefore not continuously available while the cluster is stopped.
 
-The intended pipeline includes:
+## 7. GitHub Actions CI/CD
 
-1. Source checkout and .NET SDK initialization
-2. Dependency restoration and Release build
-3. Automated test execution
-4. Product API-specific publishing
-5. Artifact-based deployment to Azure App Service
-6. Federated Azure authentication using OpenID Connect
-7. Post-deployment endpoint verification
+Two independent deployment workflows are implemented.
 
-The workflow is under implementation and will be validated before continuous deployment is enabled.
+### Product API — Azure App Service
 
-## 8. Repository Structure
+Workflow:
+
+`.github/workflows/product-api-ci-cd.yml`
+
+The Product API pipeline includes source checkout, .NET 10 build, automated tests, artifact publishing, passwordless Azure authentication using GitHub OIDC, App Service deployment, and endpoint verification.
+
+This pipeline has been successfully executed.
+
+### Four Microservices — Azure Kubernetes Service
+
+Workflow:
+
+`.github/workflows/aks-ci-cd.yml`
+
+This workflow provides the following deployment process:
+
+```mermaid
+flowchart TD
+    A["Manual workflow_dispatch on main"]
+    B["Checkout source"]
+    C["Install .NET 10 and run automated tests"]
+    D["Authenticate to Azure using GitHub OIDC"]
+    E["Build four Docker images"]
+    F["Push Git-SHA-tagged images to ACR"]
+    G["Authenticate to AKS using Microsoft Entra"]
+    H["Verify Kubernetes authorization"]
+    I["Update four Kubernetes Deployments"]
+    J["Wait for rollouts"]
+    K["Verify deployed image versions"]
+
+    A --> B --> C --> D --> E --> F --> G --> H --> I --> J --> K
+```
+
+The Kubernetes deployment stage uses `kubectl set image` to update existing Deployments rather than replacing entire workload manifests.
+
+This preserves configured application environment variables, existing Secret references, Kubernetes ServiceAccounts, probes, and resource limits.
+
+### Verified CI/CD Results
+
+| Execution | Commit | Verified result |
+|---|---|---|
+| Initial container publishing | `940c04c` | Four images pushed to ACR |
+| First complete AKS pipeline | `cdbe47f` | Build, push, and deployment succeeded |
+| Updated Order API deployment | `e8693a3` | Publisher-capable code deployed successfully |
+
+The first successful full AKS pipeline completed in approximately 4 minutes 11 seconds.
+
+All four deployed container image references were independently verified using `kubectl get deployments -o wide`.
+
+Images use the full Git commit SHA as their tag to support traceability between source code and deployed containers.
+
+### Deployment Workflow
+
+The AKS pipeline is intentionally configured with `workflow_dispatch` rather than automatically deploying on every push.
+
+To deploy a new commit:
+
+1. Commit and push the intended source changes to `main`.
+2. Open the **Actions** tab in GitHub.
+3. Select **AKS - Build, Push and Deploy**.
+4. Select **Run workflow** on `main`.
+5. Inspect the build and deployment jobs.
+6. Verify Kubernetes rollout and application health.
+
+The target AKS cluster must be running before executing the deployment stage.
+
+## 8. Security Architecture
+
+### GitHub OIDC
+
+GitHub Actions authenticates to Azure using OpenID Connect federation.
+
+This avoids storing long-lived Azure application client secrets in GitHub Actions.
+
+A dedicated user-assigned managed identity, `id-github-aks-deploy`, is used for AKS CI/CD.
+
+The existing App Service deployment identity remains separate.
+
+### Azure Role-Based Access Control
+
+The GitHub deployment identity was granted:
+
+- ACR push permission scoped to the project registry.
+- AKS cluster user credential retrieval permission scoped to the AKS cluster.
+- A namespace-scoped Kubernetes Role allowing approved Deployment operations.
+
+The Kubernetes deployment identity is bound to the `github-aks-deployer` Role in the `monolithtomicro` namespace.
+
+The role is not a cluster-admin role.
+
+**Security consideration:** Permission to update a Deployment's pod specification is still security-sensitive. Production environments should additionally use protected GitHub environments, deployment approvals, admission controls, restricted service accounts, and policy enforcement.
+
+### Azure Workload Identity
+
+The Product and Order APIs use dedicated Kubernetes ServiceAccounts and Azure workload identities.
+
+Product and Order database authentication is configured without embedding SQL passwords in source code.
+
+The Order API's managed identity also has **Azure Service Bus Data Sender** permission scoped to the `order-placed` queue.
+
+### Secret Management
+
+Sensitive database configuration is supplied through Kubernetes Secrets rather than hardcoded in application source files.
+
+Secrets and personal documentation must not be committed to the public repository.
+
+## 9. Runtime Verification
+
+After the successful GitHub Actions deployment, the application was tested using Kubernetes port-forwarding.
+
+### HTTP Health
+
+| Service | Endpoint | Verified result |
+|---|---|---|
+| Catalog API | `/health` | HTTP 200 Healthy |
+| Product API | `/health` | HTTP 200 Healthy |
+| Order API | `/health` | HTTP 200 Healthy |
+| User API | `/health` | HTTP 200 Healthy |
+
+### Database-Backed Endpoints
+
+| Service | Endpoint | Verified result |
+|---|---|---|
+| Product API | `GET /api/product` | HTTP 200; product data retrieved |
+| Order API | `GET /api/order` | HTTP 200; order data retrieved |
+| Order API | `POST /api/order` | Order created and outbox event persisted |
+
+### Kubernetes Verification
+
+The following commands are useful when the cluster is running and the caller is authenticated:
+
+```powershell
+kubectl get deployments -n monolithtomicro -o wide
+kubectl get pods -n monolithtomicro
+kubectl get services -n monolithtomicro
+kubectl rollout status deployment/order-api -n monolithtomicro
+```
+
+## 10. Repository Structure
 
 ```text
 MonolithToMicro/
-├── src/
-│   ├── MonolithToMicro.Catalog.Api/
-│   ├── MonolithToMicro.Product.Api/
-│   ├── MonolithToMicro.Order.Api/
-│   └── MonolithToMicro.User.Api/
-├── tests/
-├── scripts/
-├── compose.order-product.yaml
-├── MonolithToMicro.slnx
-├── Directory.Build.props
-└── README.md
+|-- .github/
+|   `-- workflows/
+|       |-- product-api-ci-cd.yml
+|       `-- aks-ci-cd.yml
+|-- src/
+|   |-- MonolithToMicro.Catalog.Api/
+|   |-- MonolithToMicro.Product.Api/
+|   |-- MonolithToMicro.Order.Api/
+|   `-- MonolithToMicro.User.Api/
+|-- tests/
+|   `-- MonolithToMicro.Order.Tests/
+|-- k8s/
+|   `-- aks/
+|       `-- order-api.yaml
+|-- scripts/
+|-- compose.order-product.yaml
+|-- Directory.Build.props
+|-- MonolithToMicro.slnx
+`-- README.md
 ```
 
-Personal planning material, local environment secrets, and generated deployment artifacts are excluded from the public repository.
+The tree above highlights the core tracked application and delivery files rather than every local working file.
 
-## 9. Build and Deployment
+Additional Kubernetes manifests, infrastructure setup scripts, and Azure Functions project files have been developed locally. Some remain untracked and require review before inclusion in the public repository.
+
+The deployed Azure Function is not represented as fully reproducible from the currently committed repository contents.
+
+## 11. Build and Test Locally
 
 ### Prerequisites
 
 - .NET 10 SDK
-- SQL Server for local persistence
-- Docker Engine for containerized execution
-- EF Core CLI tools for migration management
+- Docker Engine
+- SQL Server for local development
+- EF Core tools for database migrations
+- Azure CLI, kubectl, and kubelogin for Azure/Kubernetes operations
 
-### Build
-
-From the repository root:
+### Build the Solution
 
 ```powershell
 dotnet build .\MonolithToMicro.slnx --configuration Release
 ```
 
-### Run automated tests
+### Run Existing Automated Tests
 
 ```powershell
-dotnet test .\MonolithToMicro.slnx --configuration Release
+dotnet test .\tests\MonolithToMicro.Order.Tests\MonolithToMicro.Order.Tests.csproj --configuration Release
 ```
 
-### Publish Product API
+The project includes an existing Order API test project. Comprehensive automated coverage for all four services is not yet established.
+
+### Build a Docker Image
+
+From the repository root:
 
 ```powershell
-dotnet publish .\src\MonolithToMicro.Product.Api\MonolithToMicro.Product.Api.csproj --configuration Release --output .\publish
+docker build -f src/MonolithToMicro.Order.Api/Dockerfile -t order-api:local .
 ```
 
-For database initialization and local environment configuration, refer to the scripts and service configuration files in the repository. Provide credentials using environment variables or another secure local configuration mechanism.
+### Local Configuration
 
-## 10. Architecture Considerations and Scope
+Database credentials, Azure resource settings, and environment-specific values should be supplied through local environment configuration or secure secret management.
 
-The implementation demonstrates selected modernization patterns, but is not presented as a production-ready commerce platform.
+Do not commit local development settings, credentials, access tokens, or Kubernetes Secret values.
 
-Areas requiring further implementation or validation include:
+## 12. Troubleshooting and Engineering Lessons
 
-- Centralized authentication and authorization
-- Comprehensive automated testing
-- Message broker integration and outbox dispatch
-- Distributed observability and tracing
-- Retry policies, idempotency, and concurrency controls
-- Production-grade API validation and security hardening
-- Deployment rollback and operational resilience
-- Independent cloud deployment of the remaining services
+This project includes hands-on debugging of several real cloud deployment and integration scenarios.
 
-These concerns represent explicit architecture and engineering considerations rather than completed implementation claims.
+### GitHub OIDC and Azure Authorization
 
-## 11. Purpose
+**Issue:** ACI/CD identity required access to both Azure resource-management operations and Kubernetes workload updates.
 
-The purpose of this PoC is to demonstrate practical competency in evaluating modernization approaches, establishing service boundaries, implementing .NET microservices, integrating Azure platform capabilities, and designing secure, repeatable delivery processes.
+**Resolution:** Used a dedicated GitHub OIDC identity, scoped Azure role assignments, managed Microsoft Entra integration, and namespace-scoped Kubernetes RBAC.
 
-The emphasis is on **architecture decisions supported by executable implementation and verifiable deployment evidence**.
+**Lesson:** Azure authentication and Kubernetes authorization are separate security boundaries.
+
+### kubelogin Not Found
+
+**Issue:** After enabling Microsoft Entra authentication, `kubectl` could not find `kubelogin`.
+
+**Cause:** The executable had been installed but the running PowerShell session did not include its directory in PATH.
+
+**Resolution:** Added the installed kubelogin directory to the session PATH and converted kubeconfig to Azure CLI authentication.
+
+### Azure SQL Request Timeout
+
+**Issue:** The first Product API database-backed request timed out.
+
+**Observation:** Azure SQL was later confirmed online, and a subsequent request returned HTTP 200 with product data.
+
+**Lesson:** A database-backed timeout requires checking application behavior and database state. The precise cause of this incident was not conclusively determined.
+
+### Azure Service Bus Dead-Letter Message
+
+**Issue:** An earlier event reached the dead-letter queue.
+
+**Cause identified during troubleshooting:** The consumer's expected JSON property names did not match the event payload.
+
+**Resolution:** Updated and republished the Function consumer to parse the actual event format.
+
+**Verification limitation:** The subsequent event was published successfully from AKS, but per-message Function completion was not independently observed.
+
+### CI/CD Configuration and Validation
+
+**Issue:** Initial local workflow authoring and validation encountered PowerShell here-string, quoting, and unavailable-tool problems.
+
+**Resolution:** Created the workflow using VS Code and validated it through actual successful GitHub Actions executions.
+
+**Lesson:** Prefer reproducible toolchains and evidence from real pipeline execution over assumptions about local tooling availability.
+
+### Kubernetes Configuration Drift
+
+**Issue:** Enabling the Service Bus publisher using `kubectl set env` created a runtime configuration change.
+
+**Resolution:** Persisted the equivalent settings in the source-controlled `k8s/aks/order-api.yaml` manifest.
+
+**Lesson:** Runtime configuration should have a reproducible source-controlled representation.
+
+## 13. Operational Considerations
+
+The current implementation is a working proof of concept, not a fully hardened production system.
+
+Additional improvements include:
+
+- Comprehensive unit, integration, and contract tests
+- Automated deployment rollback
+- GitHub environment protection and approvals
+- Centralized structured logging and distributed tracing
+- Consumer success telemetry and correlation IDs
+- Outbox retries and idempotency validation
+- Dependency-aware readiness probes
+- Kubernetes autoscaling and high availability
+- Infrastructure as Code for repeatable provisioning
+- Disaster recovery and backup validation
+- Security scanning and software supply-chain controls
+
+### Cost Management
+
+The AKS cluster uses a worker-node configuration that incurs compute costs while running.
+
+The cluster was explicitly stopped after integration testing to reduce ongoing charges.
+
+Stopping AKS preserves the cluster configuration but temporarily makes its applications unavailable.
+
+Other resources, including Azure Container Registry, storage, networking, and messaging services, can continue to incur charges independently.
+
+## 14. Project Verification Summary
+
+| Area | Final verification |
+|---|---|
+| Four microservices on AKS | Verified |
+| GitHub Actions image publishing | Verified |
+| GitHub Actions deployment to AKS | Verified |
+| Kubernetes rollout and readiness | Verified |
+| Four HTTP health endpoints | Verified |
+| Product API database read | Verified |
+| Order API database read/write | Verified |
+| SQL transactional outbox | Verified |
+| Service Bus publication from AKS | Verified |
+| Azure Function trigger deployment | Verified |
+| Latest event successfully processed by Function | Not conclusively verified |
+| Full production readiness | Not claimed |
+
+## 15. Project Purpose
+
+MonolithToMicro demonstrates practical engineering capability across three complementary disciplines:
+
+**Solution Architecture:** Service boundaries, Azure resource integration, database ownership, transactional outbox, cloud identity, and architectural trade-offs.
+
+**Software Engineering:** ASP.NET Core development, layered application design, EF Core persistence, Docker packaging, asynchronous processing, and functional API validation.
+
+**DevOps Engineering:** GitHub Actions, OIDC federation, Docker image publishing, Azure Container Registry, Kubernetes deployments, rollout verification, RBAC, troubleshooting, and cost-aware operations.
+
+The objective is to show **working cloud engineering practices supported by source code, deployed workloads, and verifiable results**, while clearly identifying features that remain partially implemented or unverified.

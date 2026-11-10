@@ -136,6 +136,91 @@ flowchart LR
 | GitHub OIDC + managed identities | Removes long-lived Azure credentials from application and CI workflows | Requires federation, RBAC, and credential configuration |
 | Manual AKS deployment workflow | Controlled portfolio deployments and Azure spend | No automatic promotion on each commit |
 
+### Azure infrastructure — where, how, and why each resource is used
+
+The architecture separates **delivery**, **application hosting**, **data and messaging**, and **identity and access**. The table explains the **placement**, **actual integration**, and **purpose** of every Azure resource used by this project.
+
+| Azure resource | Where it fits | How this project uses it | Why it is needed |
+|---|---|---|---|
+| **Azure App Service** | Alternative application-hosting path, separate from AKS | Hosts the Product API deployment from `product-api-ci-cd.yml`; the App Service health and product endpoints were validated | Demonstrates managed PaaS hosting and a simpler deployment model alongside containers |
+| **Azure SQL Database** | Data layer, outside the AKS cluster | Product and Order APIs access the Azure SQL serverless database using Microsoft Entra authentication; the `product` and `orders` schemas hold domain data and outbox records | Durable relational persistence, transactions, and consistent order/outbox writes |
+| **Azure Blob Storage** | Private object-storage layer | A private blob container was used for a verified upload/download operation; it is **not** a core dependency in the verified AKS order-processing flow | Demonstrates private cloud object storage for file-like content |
+| **Azure Container Registry (ACR)** | Container image supply chain, between GitHub Actions and AKS | GitHub Actions builds and pushes four images tagged with the Git commit SHA; AKS pulls the published images | Central registry and traceability of deployed container versions |
+| **Azure Kubernetes Service (AKS)** | Application execution and orchestration | Runs Catalog, Product, Order, and User Deployments in the `monolithtomicro` namespace, each with an internal Kubernetes Service | Independent deployments, scheduling, networking, health probes, and controlled rollouts |
+| **Microsoft Entra ID** | Shared identity and authentication boundary | Authenticates GitHub's federated deployment identity, AKS administrators, and Product/Order workload identities | Removes dependence on long-lived Azure credentials and supports centrally managed identities |
+| **User-assigned managed identities** | CI/CD identity and AKS workload identity | A dedicated GitHub identity pushes images and updates Deployments; separate Product and Order identities access Azure SQL; the Order identity also sends to Service Bus | Separates privileges by workload and enables passwordless Azure service access |
+| **Azure Service Bus** | Asynchronous messaging layer, outside AKS | The Order API's `OutboxPublisher` sends `OrderPlaced.v1` events to the `order-placed` **queue** using managed identity | Decouples order persistence from downstream asynchronous processing |
+| **Azure Functions** | Serverless event-consumer layer, outside AKS | `ProcessOrderFromQueue` is deployed with a Service Bus trigger; successful handling of the latest test message is **not independently verified** | Demonstrates an event-driven consumer without hosting a dedicated Kubernetes worker |
+
+#### Resource interactions and boundaries
+
+```mermaid
+flowchart LR
+    subgraph DELIVERY["Delivery plane"]
+        GHA["GitHub Actions"] -->|"OIDC federation"| ENTRA["Microsoft Entra ID"]
+        GHA -->|"Build / push images"| ACR["Azure Container Registry"]
+    end
+
+    subgraph COMPUTE["Application hosting"]
+        APP["Azure App Service<br/>Product API alternate host"]
+        subgraph AKS["AKS · monolithtomicro"]
+            CAT["Catalog API"]
+            PROD["Product API"]
+            ORD["Order API"]
+            USER["User API"]
+        end
+    end
+
+    subgraph DATA["Data and integration"]
+        SQL["Azure SQL Database"]
+        BLOB["Private Azure Blob Storage"]
+        SB["Service Bus queue<br/>order-placed"]
+        FUN["Azure Function<br/>queue trigger"]
+    end
+
+    ACR -->|"Pull images"| AKS
+    GHA -->|"AKS deployment"| AKS
+    GHA -->|"Separate App Service workflow"| APP
+    PROD -->|"Workload identity"| SQL
+    ORD -->|"Workload identity"| SQL
+    ORD -->|"Managed identity · publish"| SB
+    APP -->|"Managed identity"| SQL
+    SB -.->|"Consumer configured; success unverified"| FUN
+
+    classDef delivery fill:#dbeafe,stroke:#2563eb,color:#1e40af;
+    classDef compute fill:#dcfce7,stroke:#16a34a,color:#166534;
+    classDef data fill:#ffedd5,stroke:#ea580c,color:#9a3412;
+    classDef security fill:#ede9fe,stroke:#7c3aed,color:#5b21b6;
+    class GHA,ACR delivery;
+    class APP,CAT,PROD,ORD,USER compute;
+    class SQL,BLOB,SB,FUN data;
+    class ENTRA security;
+    style DELIVERY fill:#f8fafc,stroke:#93c5fd,color:#1e40af
+    style COMPUTE fill:#f0fdf4,stroke:#86efac,color:#166534
+    style DATA fill:#fff7ed,stroke:#fdba74,color:#9a3412
+```
+
+The Blob Storage box is deliberately **not connected to the order-processing flow** because its validated use was a separate storage exercise. Likewise, the Function connection is dotted because consumer execution of the latest published message was not conclusively observed.
+
+#### AKS configuration and network exposure
+
+| Setting | Verified configuration | Operational meaning |
+|---|---|---|
+| Cluster | `aks-monolithtomicro-day13` | Managed Kubernetes control plane for the four APIs |
+| Azure region | Central India | Region hosting the AKS environment |
+| Resource group | `rg-monolithtomicro-aks-day13` | Azure resource-management boundary for this AKS deployment |
+| Namespace | `monolithtomicro` | Logical workload boundary used for Deployments, Services, and RBAC |
+| Authentication | Managed Microsoft Entra integration | Users and CI/CD authenticate through Entra identities |
+| Authorization | Native Kubernetes RBAC | GitHub deployer receives namespace-scoped Deployment permissions rather than cluster-admin |
+| API exposure | **Four internal `ClusterIP` Services on port `8080`** | Stable in-cluster networking; **no public AKS API endpoint or ingress was configured for these services** |
+| Validation access | `kubectl port-forward` | Temporary access from the authenticated developer machine for `/health` and selected API requests |
+| Runtime verification | Four Deployments `1/1` Ready, zero pod restarts | Last observed running-state health, **not live status after AKS shutdown** |
+| Current AKS state | `Stopped` (provisioning `Succeeded`) | Worker compute stopped after validation to reduce charges; application endpoints are unavailable while stopped |
+
+**Why `ClusterIP`?** It exposes each API **only within the Kubernetes cluster**, reducing accidental internet exposure during a proof of concept. Other pods can address a Service through Kubernetes DNS. Testing was performed through authenticated `kubectl port-forward`, which does **not** publish a permanent public endpoint. If external clients are required later, a separately designed ingress or API gateway, TLS, authentication, and network policies will be needed.
+
+**Service boundary note:** `ClusterIP` controls Kubernetes Service exposure; it does **not** by itself guarantee pod-to-pod traffic isolation, authorize API callers, or make outbound Azure dependencies private. Those are separate network and application security concerns.
+
 ## 3. Four microservices
 
 | Service | Responsibility | Verified in AKS |

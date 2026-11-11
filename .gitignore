@@ -28,3 +28,11 @@ MonolithToMicroUI/
 
 # Local source backups
 *.bak
+
+# Historical local deployment and troubleshooting artifacts
+/k8s/aks/order-api-live-snapshot.yaml
+/k8s/aks/order-workload-patch.json
+/order-aks-migration.sql
+/scripts/day6-product-diagnostics.ps1
+/scripts/setup-day11-servicebus-consumer.ps1
+/scripts/setup-day9-function.ps1

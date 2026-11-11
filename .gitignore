@@ -25,3 +25,6 @@ MonolithToMicroUI/
 !/.env.docker.example
 # Generated deployment artifacts
 /publish/
+
+# Local source backups
+*.bak

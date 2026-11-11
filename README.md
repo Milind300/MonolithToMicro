@@ -399,6 +399,26 @@ flowchart TB
 | Outbox publisher | Explicit `OrderPlaced.v1` success log and SQL published timestamp |
 | Azure Function consumer | Trigger configured; latest per-message invocation **not verified** |
 | AKS shutdown | `PowerState: Stopped`, `ProvisioningState: Succeeded` |
+### AKS Deployment — Verified Evidence
+
+Four .NET 10 microservices — **Catalog, Product, Order, and User** — were successfully deployed to Azure Kubernetes Service (AKS).
+
+**Deployment validation:**
+- All four Kubernetes Deployments reached `1/1 Ready`.
+- All four application pods were verified with zero restarts.
+- Readiness and liveness probes were configured.
+- All four application `/health` endpoints returned HTTP 200.
+- GitHub Actions successfully executed the AKS deployment workflow.
+
+**Deployment artifacts:**
+- [AKS CI/CD workflow](.github/workflows/aks-ci-cd.yml)
+- [Verified AKS deployment — GitHub Actions](https://github.com/Milind300/MonolithToMicro/actions/runs/42902156585)
+- [Updated Order API deployment — GitHub Actions](https://github.com/Milind300/MonolithToMicro/actions/runs/42907582391)
+- [Kubernetes manifests](k8s/)
+
+**Cost-aware operations:**
+
+Following successful validation, the AKS cluster was stopped to reduce Azure infrastructure costs.
 
 <details>
 <summary><strong>Read-only Kubernetes verification commands</strong></summary>

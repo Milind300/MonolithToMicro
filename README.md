@@ -454,7 +454,13 @@ MonolithToMicro/
 ├── MonolithToMicro.slnx
 └── README.md
 ```
+### React Frontend — Microsoft Entra ID
 
+The repository includes a React 19 + Vite frontend for exploring Microsoft Entra ID authentication, JWT-based authorization, and Catalog API integration.
+
+**Frontend documentation:** [MonolithToMicroUI/README.md](MonolithToMicroUI/README.md)
+
+See the frontend README for installation, configuration, authentication setup, backend connectivity, and troubleshooting instructions.
 The tree highlights the **known tracked core paths**, not every local file. Additional AKS manifests, a Function project, setup scripts and troubleshooting materials were present locally but **were not all committed** at the last Git status review. As a result, the entire Azure environment is **not yet reproducible from this repository alone**.
 
 > [!CAUTION]

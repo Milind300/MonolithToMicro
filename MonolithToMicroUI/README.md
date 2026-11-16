@@ -1,6 +1,6 @@
 # MonolithToMicroUI — React + Vite + Microsoft Entra ID
 
-Day 3 frontend for the `MonolithToMicro` e-commerce learning project. **This is a working authentication/Catalog-read laboratory UI**, not the full store frontend yet.
+ `MonolithToMicro` e-commerce learning project. **This is a working authentication/Catalog-read laboratory UI**, not the full store frontend yet.
 
 ## Folder location
 

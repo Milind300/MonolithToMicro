@@ -14,7 +14,11 @@
 ![Status](https://img.shields.io/badge/AKS-Stopped_after_validation-64748B)
 
 [**AKS CI/CD workflow**](.github/workflows/aks-ci-cd.yml) · [**App Service CI/CD workflow**](.github/workflows/product-api-ci-cd.yml) · [**Verified AKS deployment**](https://github.com/Milind300/MonolithToMicro/actions/runs/42902156585)
-
+<p>
+  <a href="MonolithToMicroUI/README.md">
+    <strong>React Frontend — Microsoft Entra ID</strong>
+  </a>
+</p>
 </div>
 
 > [!IMPORTANT]
